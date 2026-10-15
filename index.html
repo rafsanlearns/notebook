@@ -7,33 +7,139 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header><h1>📒 আমার Notebook</h1></header>
+  <header>
+    <h1>📒 আমার Notebook</h1>
+    <button id="adminBtn" class="hbtn" onclick="adminClick()">🔐</button>
+  </header>
+
+  <div id="adminBar" class="adminbar" style="display:none">
+    <button class="btn dl" onclick="openM('upModal')">➕ Upload</button>
+    <button class="btn" onclick="openM('tpModal')">➕ Topic</button>
+    <button class="btn del" onclick="logout()">Logout</button>
+  </div>
+
   <nav id="topics"></nav>
   <main id="list"></main>
 
+  <!-- Login -->
+  <div id="loginModal" class="modal">
+    <div class="modal-box">
+      <h3>🔐 Admin Login</h3>
+      <input id="token" type="password" placeholder="Admin Password">
+      <button onclick="login()">Login</button>
+      <button class="cancel" onclick="closeM('loginModal')">বাতিল</button>
+      <div id="loginMsg" class="err"></div>
+    </div>
+  </div>
+
+  <!-- Upload -->
+  <div id="upModal" class="modal">
+    <div class="modal-box">
+      <h3>ফাইল Upload</h3>
+      <select id="topic"></select>
+      <input id="title" placeholder="শিরোনাম (ঐচ্ছিক, একটা ফাইল হলে)">
+      <input id="files" type="file" multiple accept="image/*,application/pdf">
+      <button id="upBtn" onclick="upload()">Upload করো</button>
+      <button class="cancel" onclick="closeM('upModal')">বন্ধ করো</button>
+      <div id="status"></div>
+    </div>
+  </div>
+
+  <!-- Topic -->
+  <div id="tpModal" class="modal">
+    <div class="modal-box">
+      <h3>নতুন Topic</h3>
+      <input id="newTopic" placeholder="Topic নাম (যেমন Physics)">
+      <button onclick="addTopic()">যোগ করো</button>
+      <button class="cancel" onclick="closeM('tpModal')">বন্ধ করো</button>
+    </div>
+  </div>
+
 <script>
+const CFG = { owner: 'rafsanlearns', repo: 'notebook', branch: 'main' };
+const $ = id => document.getElementById(id);
+let token = localStorage.getItem('nb_token') || '';
+let isAdmin = false;
 let data = { topics: [], items: [] };
 let current = 'সব';
 
 const fmt = d => new Date(d).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' });
-
 function el(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
   if (text !== undefined) e.textContent = text;
   return e;
 }
+const openM = id => $(id).classList.add('show');
+const closeM = id => $(id).classList.remove('show');
 
+/* ---------- GitHub API ---------- */
+async function gh(path, opts = {}) {
+  const r = await fetch('https://api.github.com' + path, {
+    ...opts,
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    }
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.message || ('Error ' + r.status));
+  return j;
+}
+const base = () => `/repos/${CFG.owner}/${CFG.repo}/contents/`;
+const enc = s => btoa(unescape(encodeURIComponent(s)));
+const dec = s => decodeURIComponent(escape(atob(s.replace(/\n/g, ''))));
+
+async function loadData() {
+  const j = await gh(base() + 'data.json?ref=' + CFG.branch);
+  return { data: JSON.parse(dec(j.content)), sha: j.sha };
+}
+async function saveData(d, sha) {
+  await gh(base() + 'data.json', {
+    method: 'PUT',
+    body: JSON.stringify({
+      message: 'update data.json',
+      content: enc(JSON.stringify(d, null, 2)),
+      sha, branch: CFG.branch
+    })
+  });
+}
+function toB64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+/* ---------- শুরু ---------- */
 async function init() {
-  try {
-    const r = await fetch('data.json?t=' + Date.now());
-    data = await r.json();
-  } catch (e) {}
+  if (token) {
+    try {
+      data = (await loadData()).data;
+      isAdmin = true;
+    } catch (e) {
+      token = '';
+      localStorage.removeItem('nb_token');
+    }
+  }
+  if (!isAdmin) {
+    try {
+      const r = await fetch('data.json?t=' + Date.now());
+      data = await r.json();
+    } catch (e) {}
+  }
   render();
 }
 
+/* ---------- দেখানো ---------- */
 function render() {
-  const nav = document.getElementById('topics');
+  $('adminBar').style.display = isAdmin ? 'flex' : 'none';
+  $('adminBtn').style.display = isAdmin ? 'none' : 'block';
+
+  const nav = $('topics');
   nav.innerHTML = '';
   ['সব', ...data.topics].forEach(t => {
     const b = el('button', t === current ? 'active' : '', t);
@@ -41,7 +147,15 @@ function render() {
     nav.appendChild(b);
   });
 
-  const list = document.getElementById('list');
+  $('topic').innerHTML = '';
+  data.topics.forEach(t => {
+    const o = el('option', '', t);
+    o.value = t;
+    if (t === current) o.selected = true;
+    $('topic').appendChild(o);
+  });
+
+  const list = $('list');
   list.innerHTML = '';
   const items = data.items
     .filter(i => current === 'সব' || i.topic === current)
@@ -71,9 +185,112 @@ function render() {
     const v = el('a', 'btn', 'দেখুন'); v.href = i.path; v.target = '_blank';
     const d = el('a', 'btn dl', '⬇ Download'); d.href = i.path; d.download = i.name || '';
     row.append(v, d);
+    if (isAdmin) {
+      const x = el('button', 'btn del', '🗑 মুছো');
+      x.onclick = () => del(i);
+      row.appendChild(x);
+    }
     c.appendChild(row);
     list.appendChild(c);
   });
+}
+
+/* ---------- Admin ---------- */
+function adminClick() { $('loginMsg').textContent = ''; openM('loginModal'); }
+
+async function login() {
+  token = $('token').value.trim();
+  try {
+    data = (await loadData()).data;
+    isAdmin = true;
+    localStorage.setItem('nb_token', token);
+    $('token').value = '';
+    closeM('loginModal');
+    render();
+  } catch (e) {
+    token = '';
+    $('loginMsg').textContent = 'ভুল password বা অনুমতি নেই: ' + e.message;
+  }
+}
+
+function logout() {
+  localStorage.removeItem('nb_token');
+  location.reload();
+}
+
+async function addTopic() {
+  const name = $('newTopic').value.trim();
+  if (!name) return;
+  try {
+    const r = await loadData();
+    if (!r.data.topics.includes(name)) r.data.topics.push(name);
+    await saveData(r.data, r.sha);
+    data = r.data;
+    $('newTopic').value = '';
+    closeM('tpModal');
+    render();
+  } catch (e) { alert(e.message); }
+}
+
+async function upload() {
+  const files = [...$('files').files];
+  const topic = $('topic').value;
+  if (!topic || !files.length) return alert('Topic ও ফাইল বাছাই করো');
+  $('upBtn').disabled = true;
+  $('status').style.color = '#16a34a';
+  try {
+    const newItems = [];
+    for (const f of files) {
+      const isPdf = f.type === 'application/pdf';
+      const isImg = f.type.startsWith('image/');
+      if (!isPdf && !isImg) continue;
+      $('status').textContent = 'আপলোড হচ্ছে: ' + f.name;
+      const safe = Date.now() + '-' + f.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const path = 'files/' + safe;
+      await gh(base() + path, {
+        method: 'PUT',
+        body: JSON.stringify({
+          message: 'add ' + safe,
+          content: await toB64(f),
+          branch: CFG.branch
+        })
+      });
+      newItems.push({
+        id: safe, topic,
+        title: (files.length === 1 && $('title').value.trim()) || f.name.replace(/\.[^.]+$/, ''),
+        type: isPdf ? 'pdf' : 'image',
+        path, name: f.name,
+        date: new Date().toISOString()
+      });
+    }
+    const r = await loadData();
+    r.data.items.push(...newItems);
+    await saveData(r.data, r.sha);
+    data = r.data;
+    $('status').textContent = '✅ আপলোড সম্পন্ন! ছবি/PDF সাইটে খুলতে ১-২ মিনিট লাগতে পারে।';
+    $('files').value = ''; $('title').value = '';
+    render();
+  } catch (e) {
+    $('status').style.color = '#dc2626';
+    $('status').textContent = 'ত্রুটি: ' + e.message;
+  }
+  $('upBtn').disabled = false;
+}
+
+async function del(item) {
+  if (!confirm('সত্যিই মুছে ফেলবে?')) return;
+  try {
+    const f = await gh(base() + item.path + '?ref=' + CFG.branch);
+    await gh(base() + item.path, {
+      method: 'DELETE',
+      body: JSON.stringify({ message: 'delete ' + item.id, sha: f.sha, branch: CFG.branch })
+    });
+    const r = await loadData();
+    r.data.items = r.data.items.filter(x => x.id !== item.id);
+    await saveData(r.data, r.sha);
+    data = r.data;
+    render();
+  } catch (e) { alert(e.message); }
 }
 
 init();
