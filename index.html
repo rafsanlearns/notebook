@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>আমার Notebook</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header><h1>📒 আমার Notebook</h1></header>
+  <nav id="topics"></nav>
+  <main id="list"></main>
+
+<script>
+let data = { topics: [], items: [] };
+let current = 'সব';
+
+const fmt = d => new Date(d).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' });
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+async function init() {
+  try {
+    const r = await fetch('data.json?t=' + Date.now());
+    data = await r.json();
+  } catch (e) {}
+  render();
+}
+
+function render() {
+  const nav = document.getElementById('topics');
+  nav.innerHTML = '';
+  ['সব', ...data.topics].forEach(t => {
+    const b = el('button', t === current ? 'active' : '', t);
+    b.onclick = () => { current = t; render(); };
+    nav.appendChild(b);
+  });
+
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+  const items = data.items
+    .filter(i => current === 'সব' || i.topic === current)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (!items.length) {
+    list.appendChild(el('p', 'empty', 'এখনো কিছু আপলোড করা হয়নি।'));
+    return;
+  }
+
+  items.forEach(i => {
+    const c = el('article', 'card');
+    c.appendChild(el('div', 'date', '📅 ' + fmt(i.date)));
+    c.appendChild(el('div', 'topic', i.topic));
+    c.appendChild(el('h3', '', i.title));
+
+    if (i.type === 'image') {
+      const img = el('img');
+      img.src = i.path; img.loading = 'lazy'; img.alt = i.title;
+      img.onclick = () => window.open(i.path);
+      c.appendChild(img);
+    } else {
+      c.appendChild(el('div', 'pdf', '📄 PDF ফাইল'));
+    }
+
+    const row = el('div', 'actions');
+    const v = el('a', 'btn', 'দেখুন'); v.href = i.path; v.target = '_blank';
+    const d = el('a', 'btn dl', '⬇ Download'); d.href = i.path; d.download = i.name || '';
+    row.append(v, d);
+    c.appendChild(row);
+    list.appendChild(c);
+  });
+}
+
+init();
+</script>
+</body>
+</html>
