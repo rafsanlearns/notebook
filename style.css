@@ -21,3 +21,15 @@ main { max-width: 900px; margin: 0 auto; padding: 12px; display: grid; gap: 14px
 .box input, .box select { padding: 10px; font-size: 15px; border: 1px solid #ccc; border-radius: 8px; width: 100%; }
 .box button { padding: 11px; font-size: 16px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; cursor: pointer; }
 #status { color: #16a34a; font-size: 14px; }
+header { position: relative; }
+.hbtn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: #ffffff33; border: 0; color: #fff; font-size: 20px; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.adminbar { display: flex; gap: 8px; padding: 10px 12px; background: #fef3c7; justify-content: center; flex-wrap: wrap; }
+.modal { display: none; position: fixed; inset: 0; background: #0008; z-index: 20; align-items: center; justify-content: center; padding: 16px; }
+.modal.show { display: flex; }
+.modal-box { background: #fff; width: 100%; max-width: 400px; padding: 18px; border-radius: 14px; display: grid; gap: 10px; }
+.modal-box h3 { margin: 0; }
+.modal-box input, .modal-box select { padding: 10px; font-size: 15px; border: 1px solid #ccc; border-radius: 8px; width: 100%; }
+.modal-box button { padding: 11px; font-size: 16px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; cursor: pointer; }
+.modal-box button:disabled { opacity: .5; }
+.modal-box button.cancel { background: #e5e7eb; color: #111; }
+.err { color: #dc2626; font-size: 14px; }
