@@ -1,351 +1,240 @@
 <!DOCTYPE html>
 <html lang="bn">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>আমার Notebook</title>
-  <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>আমার Notebook</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <div class="hwrap">
-      <div class="brand">
-        <h1>📒 আমার Notebook</h1>
-        <p>বিষয় অনুযায়ী সব Notes ও PDF এক জায়গায়</p>
-      </div>
-      <button id="adminBtn" class="iconbtn" onclick="openLogin()" title="Admin">🔐</button>
-    </div>
-  </header>
+<header>
+  <h1>📚 আমার Notebook</h1>
+  <button class="light" id="adminBtn">Admin</button>
+</header>
 
-  <div class="wrap">
-    <div class="searchbox">
-      <input id="search" class="search" placeholder="🔎 Notes খুঁজুন...">
-    </div>
-
-    <div id="adminBar" class="adminbar">
-      <span class="tag">● Admin Mode</span>
-      <button class="btn dl" onclick="openM('upModal')">⬆ Upload</button>
-      <button class="btn" onclick="openM('tpModal')">＋ Topic</button>
-      <button class="btn out" onclick="logout()">Logout</button>
-    </div>
-
-    <div id="topics"></div>
-    <div id="list"></div>
+<main>
+  <!-- Admin login -->
+  <div class="panel" id="loginPanel">
+    <h3>Admin Login</h3>
+    <input type="password" id="tokenInput" placeholder="GitHub Token দিন">
+    <button id="loginBtn">Login</button>
+    <div class="msg" id="loginMsg"></div>
   </div>
 
-  <footer>© আমার Notebook</footer>
-
-  <!-- Login -->
-  <div id="loginModal" class="modal">
-    <div class="sheet">
-      <h3>🔐 Admin Login</h3>
-      <p class="sub">শুধু admin ফাইল আপলোড করতে পারবে</p>
-      <input id="pw" type="password" inputmode="numeric" placeholder="Admin Password">
-      <button id="loginBtn" onclick="login()">Login</button>
-      <button class="cancel" onclick="closeM('loginModal')">বাতিল</button>
-      <div id="loginMsg" class="msg err"></div>
+  <!-- Admin upload -->
+  <div class="panel" id="uploadPanel">
+    <h3>নতুন Upload (Admin)</h3>
+    <select id="topicSelect"></select>
+    <input type="text" id="newTopic" placeholder="অথবা নতুন Topic-এর নাম লিখুন (ঐচ্ছিক)">
+    <input type="text" id="titleInput" placeholder="Title (ফাঁকা রাখলে ফাইলের নাম)">
+    <input type="file" id="fileInput" accept="image/*,.pdf" multiple>
+    <div style="margin-top:8px;display:flex;gap:8px">
+      <button id="uploadBtn">Upload</button>
+      <button class="light" id="logoutBtn">Logout</button>
     </div>
+    <div class="msg" id="upMsg"></div>
   </div>
 
-  <!-- Upload -->
-  <div id="upModal" class="modal">
-    <div class="sheet">
-      <h3>⬆ ফাইল Upload</h3>
-      <select id="topic"></select>
-      <input id="title" placeholder="শিরোনাম (ঐচ্ছিক, একটা ফাইল হলে)">
-      <input id="files" type="file" multiple accept="image/*,application/pdf">
-      <button id="upBtn" onclick="upload()">Upload করো</button>
-      <button class="cancel" onclick="closeM('upModal')">বন্ধ করো</button>
-      <div id="status" class="msg"></div>
-    </div>
-  </div>
+  <div class="chips" id="chips"></div>
+  <input class="search" id="search" placeholder="🔍 খুঁজুন...">
+  <div class="grid" id="grid"></div>
+</main>
 
-  <!-- Topic -->
-  <div id="tpModal" class="modal">
-    <div class="sheet">
-      <h3>＋ নতুন Topic</h3>
-      <input id="newTopic" placeholder="যেমন: Physics">
-      <button onclick="addTopic()">যোগ করো</button>
-      <button class="cancel" onclick="closeM('tpModal')">বন্ধ করো</button>
-    </div>
-  </div>
-
-  <div id="lightbox" class="lightbox" onclick="this.classList.remove('show')"><img id="lbImg" alt=""></div>
-
-<script src="config.js"></script>
 <script>
-const CFG = { owner: 'rafsanlearns', repo: 'notebook', branch: 'main' };
+const OWNER = "rafsanlearns";
+const REPO  = "notebook";
+const API   = `https://api.github.com/repos/${OWNER}/${REPO}/contents/`;
+
+let data = {topics: [], items: []};
+let activeTopic = "সব";
+let token = localStorage.getItem("nb_token") || "";
 const $ = id => document.getElementById(id);
-let token = localStorage.getItem('nb_token') || '';
-let isAdmin = false;
-let data = { topics: [], items: [] };
-let current = 'সব';
-let query = '';
 
-const fmt = d => new Date(d).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' });
-function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-const openM = id => $(id).classList.add('show');
-const closeM = id => $(id).classList.remove('show');
+/* ---------- Helpers ---------- */
+const b64enc = s => btoa(unescape(encodeURIComponent(s)));
+const b64dec = s => decodeURIComponent(escape(atob(s.replace(/\n/g, ""))));
+const fmtDate = d => new Date(d).toLocaleDateString("bn-BD", {day:"numeric", month:"long", year:"numeric"});
+const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const isImg = p => /\.(jpe?g|png|gif|webp|bmp)$/i.test(p);
 
-/* ---------- GitHub API ---------- */
-async function gh(path, opts = {}) {
-  const r = await fetch('https://api.github.com' + path, {
+function gh(path, opts = {}) {
+  return fetch(API + path, {
     ...opts,
     headers: {
-      'Authorization': 'Bearer ' + token,
-      'Accept': 'application/vnd.github+json',
-      'Content-Type': 'application/json'
+      "Authorization": "Bearer " + token,
+      "Accept": "application/vnd.github+json",
+      "Content-Type": "application/json"
     }
   });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.message || ('Error ' + r.status));
-  return j;
-}
-const base = () => `/repos/${CFG.owner}/${CFG.repo}/contents/`;
-const enc = s => btoa(unescape(encodeURIComponent(s)));
-const dec = s => decodeURIComponent(escape(atob(s.replace(/\n/g, ''))));
-
-async function loadData() {
-  const j = await gh(base() + 'data.json?ref=' + CFG.branch);
-  return { data: JSON.parse(dec(j.content)), sha: j.sha };
-}
-async function saveData(d, sha) {
-  await gh(base() + 'data.json', {
-    method: 'PUT',
-    body: JSON.stringify({
-      message: 'update data.json',
-      content: enc(JSON.stringify(d, null, 2)),
-      sha, branch: CFG.branch
-    })
-  });
-}
-function toB64(file) {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result.split(',')[1]);
-    r.onerror = rej;
-    r.readAsDataURL(file);
-  });
 }
 
-/* ---------- Password দিয়ে token খোলা ---------- */
-async function decryptToken(pw) {
-  const bin = Uint8Array.from(atob(ENC_TOKEN), c => c.charCodeAt(0));
-  const salt = bin.slice(0, 16), iv = bin.slice(16, 28), ct = bin.slice(28);
-  const te = new TextEncoder();
-  const km = await crypto.subtle.importKey('raw', te.encode(pw), 'PBKDF2', false, ['deriveKey']);
-  const key = await crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },
-    km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
-  return new TextDecoder().decode(pt);
-}
-
-/* ---------- শুরু ---------- */
-async function init() {
-  if (token) {
-    try {
-      data = (await loadData()).data;
-      isAdmin = true;
-    } catch (e) {
-      token = '';
-      localStorage.removeItem('nb_token');
-    }
-  }
-  if (!isAdmin) {
-    try {
-      const r = await fetch('data.json?t=' + Date.now());
+/* ---------- Load & Render ---------- */
+async function load() {
+  try {
+    if (token) {
+      const r = await gh("data.json");
+      if (r.ok) { data = JSON.parse(b64dec((await r.json()).content)); }
+    } else {
+      const r = await fetch("data.json?t=" + Date.now());
       data = await r.json();
-    } catch (e) {}
-  }
+    }
+  } catch (e) { console.error(e); }
   render();
 }
 
-/* ---------- দেখানো ---------- */
 function render() {
-  $('adminBar').style.display = isAdmin ? 'flex' : 'none';
-  $('adminBtn').style.display = isAdmin ? 'none' : 'block';
+  // chips
+  const tops = ["সব", ...data.topics];
+  $("chips").innerHTML = tops.map(t =>
+    `<div class="chip ${t === activeTopic ? "active" : ""}" data-t="${esc(t)}">${esc(t)}</div>`).join("");
+  document.querySelectorAll(".chip").forEach(c => c.onclick = () => { activeTopic = c.dataset.t; render(); });
 
-  const nav = $('topics');
-  nav.innerHTML = '';
-  const mk = (name, count) => {
-    const b = el('button', 'chip' + (name === current ? ' active' : ''), name);
-    b.appendChild(el('small', '', String(count)));
-    b.onclick = () => { current = name; render(); };
-    nav.appendChild(b);
-  };
-  mk('সব', data.items.length);
-  data.topics.forEach(t => mk(t, data.items.filter(i => i.topic === t).length));
+  // topic select (admin)
+  $("topicSelect").innerHTML = data.topics.map(t => `<option>${esc(t)}</option>`).join("");
 
-  $('topic').innerHTML = '';
-  data.topics.forEach(t => {
-    const o = el('option', '', t);
-    o.value = t;
-    if (t === current) o.selected = true;
-    $('topic').appendChild(o);
-  });
+  // items
+  const q = $("search").value.trim().toLowerCase();
+  const list = data.items
+    .filter(i => activeTopic === "সব" || i.topic === activeTopic)
+    .filter(i => !q || i.title.toLowerCase().includes(q))
+    .sort((a, b) => b.date.localeCompare(a.date));
 
-  const list = $('list');
-  list.innerHTML = '';
-  const q = query.toLowerCase();
-  const items = data.items
-    .filter(i => (current === 'সব' || i.topic === current) &&
-                 (!q || i.title.toLowerCase().includes(q)))
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
+  if (!list.length) { $("grid").innerHTML = `<div class="empty">কিছু পাওয়া যায়নি</div>`; return; }
 
-  if (!items.length) {
-    list.appendChild(el('p', 'empty', 'কিছু পাওয়া যায়নি।'));
-    return;
-  }
-
-  items.forEach(i => {
-    const c = el('article', 'card');
-    let m;
-    if (i.type === 'image') {
-      m = el('div', 'media');
-      const img = el('img');
-      img.src = i.path; img.loading = 'lazy'; img.alt = i.title;
-      img.onclick = () => { $('lbImg').src = i.path; $('lightbox').classList.add('show'); };
-      m.appendChild(img);
-    } else {
-      m = el('div', 'media pdf');
-      m.append(el('span', '', '📄'), el('div', '', 'PDF'));
-    }
-    c.appendChild(m);
-
-    const b = el('div', 'cbody');
-    const d = el('div', 'date');
-    d.append(el('span', '', 'আপলোড:'), el('b', '', fmt(i.date)));
-    b.append(d, el('span', 'tpc', i.topic), el('h3', '', i.title));
-
-    const row = el('div', 'actions');
-    const v = el('a', 'btn', 'দেখুন'); v.href = i.path; v.target = '_blank';
-    const dl = el('a', 'btn dl', '⬇ Download'); dl.href = i.path; dl.download = i.name || '';
-    row.append(v, dl);
-    if (isAdmin) {
-      const x = el('button', 'btn del', '🗑');
-      x.onclick = () => del(i);
-      row.appendChild(x);
-    }
-    b.appendChild(row);
-    c.appendChild(b);
-    list.appendChild(c);
-  });
+  $("grid").innerHTML = list.map(i => `
+    <div class="card">
+      <div class="thumb">${isImg(i.path) ? `<img src="${i.path}" loading="lazy">` : "📄"}</div>
+      <div class="info">
+        <div class="date">📅 ${fmtDate(i.date)}</div>
+        <div class="title">${esc(i.title)}</div>
+        <div class="topic">${esc(i.topic)}</div>
+      </div>
+      <div class="actions">
+        <a class="btn light" href="${i.path}" target="_blank">দেখুন</a>
+        <a class="btn" href="${i.path}" download>Download</a>
+        ${token ? `<button class="danger" onclick="del('${i.id}')">Delete</button>` : ""}
+      </div>
+    </div>`).join("");
 }
 
-$('search').addEventListener('input', e => { query = e.target.value; render(); });
+/* ---------- Admin UI ---------- */
+function showAdmin() {
+  $("uploadPanel").classList.toggle("show", !!token);
+  $("loginPanel").classList.remove("show");
+}
+$("adminBtn").onclick = () => {
+  if (token) $("uploadPanel").classList.toggle("show");
+  else $("loginPanel").classList.toggle("show");
+};
 
-/* ---------- Admin ---------- */
-function openLogin() { $('loginMsg').textContent = ''; openM('loginModal'); $('pw').focus(); }
-
-async function login() {
-  const pw = $('pw').value.trim();
-  if (!pw) return;
-  $('loginBtn').disabled = true;
-  $('loginMsg').textContent = '';
-  try {
-    if (typeof ENC_TOKEN === 'undefined') throw new Error('config.js পাওয়া যায়নি');
-    let t;
-    try { t = await decryptToken(pw); }
-    catch (e) { throw new Error('ভুল password'); }
+$("loginBtn").onclick = async () => {
+  const t = $("tokenInput").value.trim();
+  if (!t) return;
+  $("loginMsg").textContent = "যাচাই করা হচ্ছে...";
+  const r = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}`, {
+    headers: {"Authorization": "Bearer " + t}
+  });
+  const j = await r.json();
+  if (r.ok && j.permissions && j.permissions.push) {
     token = t;
-    data = (await loadData()).data;
-    isAdmin = true;
-    localStorage.setItem('nb_token', token);
-    $('pw').value = '';
-    closeM('loginModal');
-    render();
-  } catch (e) {
-    token = '';
-    $('loginMsg').textContent = e.message;
+    localStorage.setItem("nb_token", t);
+    $("tokenInput").value = "";
+    $("loginMsg").textContent = "";
+    showAdmin();
+    load();
+  } else {
+    $("loginMsg").textContent = "❌ ভুল Token বা অনুমতি নেই";
   }
-  $('loginBtn').disabled = false;
-}
+};
 
-function logout() {
-  localStorage.removeItem('nb_token');
-  location.reload();
-}
+$("logoutBtn").onclick = () => {
+  localStorage.removeItem("nb_token");
+  token = "";
+  $("uploadPanel").classList.remove("show");
+  load();
+};
 
-async function addTopic() {
-  const name = $('newTopic').value.trim();
-  if (!name) return;
-  try {
-    const r = await loadData();
-    if (!r.data.topics.includes(name)) r.data.topics.push(name);
-    await saveData(r.data, r.sha);
-    data = r.data;
-    $('newTopic').value = '';
-    closeM('tpModal');
-    render();
-  } catch (e) { alert(e.message); }
-}
-
-async function upload() {
-  const files = [...$('files').files];
-  const topic = $('topic').value;
-  if (!topic || !files.length) return alert('Topic ও ফাইল বাছাই করো');
-  $('upBtn').disabled = true;
-  $('status').className = 'msg ok';
-  try {
-    const newItems = [];
-    let n = 0;
-    for (const f of files) {
-      const isPdf = f.type === 'application/pdf';
-      const isImg = f.type.startsWith('image/');
-      if (!isPdf && !isImg) continue;
-      n++;
-      $('status').textContent = `আপলোড হচ্ছে (${n}/${files.length}): ${f.name}`;
-      const safe = Date.now() + '-' + f.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const path = 'files/' + safe;
-      await gh(base() + path, {
-        method: 'PUT',
-        body: JSON.stringify({ message: 'add ' + safe, content: await toB64(f), branch: CFG.branch })
-      });
-      newItems.push({
-        id: safe, topic,
-        title: (files.length === 1 && $('title').value.trim()) || f.name.replace(/\.[^.]+$/, ''),
-        type: isPdf ? 'pdf' : 'image',
-        path, name: f.name,
-        date: new Date().toISOString()
-      });
-    }
-    const r = await loadData();
-    r.data.items.push(...newItems);
-    await saveData(r.data, r.sha);
-    data = r.data;
-    $('status').textContent = '✅ আপলোড সম্পন্ন! ছবি/PDF সবার জন্য খুলতে ১-২ মিনিট লাগতে পারে।';
-    $('files').value = ''; $('title').value = '';
-    render();
-  } catch (e) {
-    $('status').className = 'msg err';
-    $('status').textContent = 'ত্রুটি: ' + e.message;
-  }
-  $('upBtn').disabled = false;
-}
-
-async function del(item) {
-  if (!confirm('সত্যিই মুছে ফেলবে?')) return;
-  try {
-    const f = await gh(base() + item.path + '?ref=' + CFG.branch);
-    await gh(base() + item.path, {
-      method: 'DELETE',
-      body: JSON.stringify({ message: 'delete ' + item.id, sha: f.sha, branch: CFG.branch })
+/* ---------- Update data.json ---------- */
+async function updateData(mutator, message) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await gh("data.json");
+    const j = await r.json();
+    const current = JSON.parse(b64dec(j.content));
+    mutator(current);
+    const put = await gh("data.json", {
+      method: "PUT",
+      body: JSON.stringify({message, content: b64enc(JSON.stringify(current, null, 2)), sha: j.sha})
     });
-    const r = await loadData();
-    r.data.items = r.data.items.filter(x => x.id !== item.id);
-    await saveData(r.data, r.sha);
-    data = r.data;
-    render();
-  } catch (e) { alert(e.message); }
+    if (put.ok) { data = current; return; }
+    if (put.status !== 409) throw new Error("data.json সেভ হয়নি");
+  }
+  throw new Error("বারবার চেষ্টা করেও সেভ হয়নি");
 }
 
-init();
+/* ---------- Upload ---------- */
+const toBase64 = file => new Promise((res, rej) => {
+  const fr = new FileReader();
+  fr.onload = () => res(fr.result.split(",")[1]);
+  fr.onerror = rej;
+  fr.readAsDataURL(file);
+});
+
+$("uploadBtn").onclick = async () => {
+  const files = [...$("fileInput").files];
+  const topic = $("newTopic").value.trim() || $("topicSelect").value;
+  if (!files.length) { $("upMsg").textContent = "ফাইল বাছাই করুন"; return; }
+  if (!topic) { $("upMsg").textContent = "Topic দিন"; return; }
+
+  $("uploadBtn").disabled = true;
+  const date = new Date().toISOString().slice(0, 10);
+  const newItems = [];
+
+  try {
+    for (let n = 0; n < files.length; n++) {
+      const f = files[n];
+      $("upMsg").textContent = `আপলোড হচ্ছে ${n + 1}/${files.length}: ${f.name}`;
+      const safe = Date.now() + "-" + f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = "files/" + safe;
+      const r = await gh(path, {
+        method: "PUT",
+        body: JSON.stringify({message: "Upload " + safe, content: await toBase64(f)})
+      });
+      if (!r.ok) throw new Error(f.name + " আপলোড হয়নি (সাইজ বেশি হতে পারে)");
+      const title = (files.length === 1 && $("titleInput").value.trim()) || f.name.replace(/\.[^.]+$/, "");
+      newItems.push({id: "i" + Date.now() + n, topic, title, path, date});
+    }
+    await updateData(d => {
+      if (!d.topics.includes(topic)) d.topics.push(topic);
+      d.items.push(...newItems);
+    }, "Add items");
+
+    $("upMsg").textContent = "✅ আপলোড সফল! (সবার কাছে দেখাতে ১-২ মিনিট লাগতে পারে)";
+    $("fileInput").value = ""; $("titleInput").value = ""; $("newTopic").value = "";
+    render();
+  } catch (e) {
+    $("upMsg").textContent = "❌ " + e.message;
+  }
+  $("uploadBtn").disabled = false;
+};
+
+/* ---------- Delete ---------- */
+async function del(id) {
+  if (!confirm("সত্যিই মুছে ফেলবেন?")) return;
+  const item = data.items.find(i => i.id === id);
+  try {
+    const r = await gh(item.path);
+    if (r.ok) {
+      const j = await r.json();
+      await gh(item.path, {method: "DELETE", body: JSON.stringify({message: "Delete " + item.path, sha: j.sha})});
+    }
+    await updateData(d => { d.items = d.items.filter(i => i.id !== id); }, "Remove item");
+    render();
+  } catch (e) { alert("❌ " + e.message); }
+}
+
+$("search").oninput = render;
+showAdmin();
+load();
 </script>
 </body>
 </html>
