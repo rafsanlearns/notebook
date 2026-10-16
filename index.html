@@ -8,53 +8,71 @@
 </head>
 <body>
   <header>
-    <h1>📒 আমার Notebook</h1>
-    <button id="adminBtn" class="hbtn" onclick="adminClick()">🔐</button>
+    <div class="hwrap">
+      <div class="brand">
+        <h1>📒 আমার Notebook</h1>
+        <p>বিষয় অনুযায়ী সব Notes ও PDF এক জায়গায়</p>
+      </div>
+      <button id="adminBtn" class="iconbtn" onclick="openLogin()" title="Admin">🔐</button>
+    </div>
   </header>
 
-  <div id="adminBar" class="adminbar" style="display:none">
-    <button class="btn dl" onclick="openM('upModal')">➕ Upload</button>
-    <button class="btn" onclick="openM('tpModal')">➕ Topic</button>
-    <button class="btn del" onclick="logout()">Logout</button>
+  <div class="wrap">
+    <div class="searchbox">
+      <input id="search" class="search" placeholder="🔎 Notes খুঁজুন...">
+    </div>
+
+    <div id="adminBar" class="adminbar">
+      <span class="tag">● Admin Mode</span>
+      <button class="btn dl" onclick="openM('upModal')">⬆ Upload</button>
+      <button class="btn" onclick="openM('tpModal')">＋ Topic</button>
+      <button class="btn out" onclick="logout()">Logout</button>
+    </div>
+
+    <div id="topics"></div>
+    <div id="list"></div>
   </div>
 
-  <nav id="topics"></nav>
-  <main id="list"></main>
+  <footer>© আমার Notebook</footer>
 
   <!-- Login -->
   <div id="loginModal" class="modal">
-    <div class="modal-box">
+    <div class="sheet">
       <h3>🔐 Admin Login</h3>
-      <input id="token" type="password" placeholder="Admin Password">
-      <button onclick="login()">Login</button>
+      <p class="sub">শুধু admin ফাইল আপলোড করতে পারবে</p>
+      <input id="pw" type="password" inputmode="numeric" placeholder="Admin Password">
+      <button id="loginBtn" onclick="login()">Login</button>
       <button class="cancel" onclick="closeM('loginModal')">বাতিল</button>
-      <div id="loginMsg" class="err"></div>
+      <div id="loginMsg" class="msg err"></div>
     </div>
   </div>
 
   <!-- Upload -->
   <div id="upModal" class="modal">
-    <div class="modal-box">
-      <h3>ফাইল Upload</h3>
+    <div class="sheet">
+      <h3>⬆ ফাইল Upload</h3>
       <select id="topic"></select>
       <input id="title" placeholder="শিরোনাম (ঐচ্ছিক, একটা ফাইল হলে)">
       <input id="files" type="file" multiple accept="image/*,application/pdf">
       <button id="upBtn" onclick="upload()">Upload করো</button>
       <button class="cancel" onclick="closeM('upModal')">বন্ধ করো</button>
-      <div id="status"></div>
+      <div id="status" class="msg"></div>
     </div>
   </div>
 
   <!-- Topic -->
   <div id="tpModal" class="modal">
-    <div class="modal-box">
-      <h3>নতুন Topic</h3>
-      <input id="newTopic" placeholder="Topic নাম (যেমন Physics)">
+    <div class="sheet">
+      <h3>＋ নতুন Topic</h3>
+      <input id="newTopic" placeholder="যেমন: Physics">
       <button onclick="addTopic()">যোগ করো</button>
       <button class="cancel" onclick="closeM('tpModal')">বন্ধ করো</button>
     </div>
   </div>
 
+  <div id="lightbox" class="lightbox" onclick="this.classList.remove('show')"><img id="lbImg" alt=""></div>
+
+<script src="config.js"></script>
 <script>
 const CFG = { owner: 'rafsanlearns', repo: 'notebook', branch: 'main' };
 const $ = id => document.getElementById(id);
@@ -62,6 +80,7 @@ let token = localStorage.getItem('nb_token') || '';
 let isAdmin = false;
 let data = { topics: [], items: [] };
 let current = 'সব';
+let query = '';
 
 const fmt = d => new Date(d).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' });
 function el(tag, cls, text) {
@@ -114,6 +133,19 @@ function toB64(file) {
   });
 }
 
+/* ---------- Password দিয়ে token খোলা ---------- */
+async function decryptToken(pw) {
+  const bin = Uint8Array.from(atob(ENC_TOKEN), c => c.charCodeAt(0));
+  const salt = bin.slice(0, 16), iv = bin.slice(16, 28), ct = bin.slice(28);
+  const te = new TextEncoder();
+  const km = await crypto.subtle.importKey('raw', te.encode(pw), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },
+    km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+  return new TextDecoder().decode(pt);
+}
+
 /* ---------- শুরু ---------- */
 async function init() {
   if (token) {
@@ -141,11 +173,14 @@ function render() {
 
   const nav = $('topics');
   nav.innerHTML = '';
-  ['সব', ...data.topics].forEach(t => {
-    const b = el('button', t === current ? 'active' : '', t);
-    b.onclick = () => { current = t; render(); };
+  const mk = (name, count) => {
+    const b = el('button', 'chip' + (name === current ? ' active' : ''), name);
+    b.appendChild(el('small', '', String(count)));
+    b.onclick = () => { current = name; render(); };
     nav.appendChild(b);
-  });
+  };
+  mk('সব', data.items.length);
+  data.topics.forEach(t => mk(t, data.items.filter(i => i.topic === t).length));
 
   $('topic').innerHTML = '';
   data.topics.forEach(t => {
@@ -157,60 +192,79 @@ function render() {
 
   const list = $('list');
   list.innerHTML = '';
+  const q = query.toLowerCase();
   const items = data.items
-    .filter(i => current === 'সব' || i.topic === current)
+    .filter(i => (current === 'সব' || i.topic === current) &&
+                 (!q || i.title.toLowerCase().includes(q)))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
   if (!items.length) {
-    list.appendChild(el('p', 'empty', 'এখনো কিছু আপলোড করা হয়নি।'));
+    list.appendChild(el('p', 'empty', 'কিছু পাওয়া যায়নি।'));
     return;
   }
 
   items.forEach(i => {
     const c = el('article', 'card');
-    c.appendChild(el('div', 'date', '📅 ' + fmt(i.date)));
-    c.appendChild(el('div', 'topic', i.topic));
-    c.appendChild(el('h3', '', i.title));
-
+    let m;
     if (i.type === 'image') {
+      m = el('div', 'media');
       const img = el('img');
       img.src = i.path; img.loading = 'lazy'; img.alt = i.title;
-      img.onclick = () => window.open(i.path);
-      c.appendChild(img);
+      img.onclick = () => { $('lbImg').src = i.path; $('lightbox').classList.add('show'); };
+      m.appendChild(img);
     } else {
-      c.appendChild(el('div', 'pdf', '📄 PDF ফাইল'));
+      m = el('div', 'media pdf');
+      m.append(el('span', '', '📄'), el('div', '', 'PDF'));
     }
+    c.appendChild(m);
+
+    const b = el('div', 'cbody');
+    const d = el('div', 'date');
+    d.append(el('span', '', 'আপলোড:'), el('b', '', fmt(i.date)));
+    b.append(d, el('span', 'tpc', i.topic), el('h3', '', i.title));
 
     const row = el('div', 'actions');
     const v = el('a', 'btn', 'দেখুন'); v.href = i.path; v.target = '_blank';
-    const d = el('a', 'btn dl', '⬇ Download'); d.href = i.path; d.download = i.name || '';
-    row.append(v, d);
+    const dl = el('a', 'btn dl', '⬇ Download'); dl.href = i.path; dl.download = i.name || '';
+    row.append(v, dl);
     if (isAdmin) {
-      const x = el('button', 'btn del', '🗑 মুছো');
+      const x = el('button', 'btn del', '🗑');
       x.onclick = () => del(i);
       row.appendChild(x);
     }
-    c.appendChild(row);
+    b.appendChild(row);
+    c.appendChild(b);
     list.appendChild(c);
   });
 }
 
+$('search').addEventListener('input', e => { query = e.target.value; render(); });
+
 /* ---------- Admin ---------- */
-function adminClick() { $('loginMsg').textContent = ''; openM('loginModal'); }
+function openLogin() { $('loginMsg').textContent = ''; openM('loginModal'); $('pw').focus(); }
 
 async function login() {
-  token = $('token').value.trim();
+  const pw = $('pw').value.trim();
+  if (!pw) return;
+  $('loginBtn').disabled = true;
+  $('loginMsg').textContent = '';
   try {
+    if (typeof ENC_TOKEN === 'undefined') throw new Error('config.js পাওয়া যায়নি');
+    let t;
+    try { t = await decryptToken(pw); }
+    catch (e) { throw new Error('ভুল password'); }
+    token = t;
     data = (await loadData()).data;
     isAdmin = true;
     localStorage.setItem('nb_token', token);
-    $('token').value = '';
+    $('pw').value = '';
     closeM('loginModal');
     render();
   } catch (e) {
     token = '';
-    $('loginMsg').textContent = 'ভুল password বা অনুমতি নেই: ' + e.message;
+    $('loginMsg').textContent = e.message;
   }
+  $('loginBtn').disabled = false;
 }
 
 function logout() {
@@ -237,23 +291,21 @@ async function upload() {
   const topic = $('topic').value;
   if (!topic || !files.length) return alert('Topic ও ফাইল বাছাই করো');
   $('upBtn').disabled = true;
-  $('status').style.color = '#16a34a';
+  $('status').className = 'msg ok';
   try {
     const newItems = [];
+    let n = 0;
     for (const f of files) {
       const isPdf = f.type === 'application/pdf';
       const isImg = f.type.startsWith('image/');
       if (!isPdf && !isImg) continue;
-      $('status').textContent = 'আপলোড হচ্ছে: ' + f.name;
+      n++;
+      $('status').textContent = `আপলোড হচ্ছে (${n}/${files.length}): ${f.name}`;
       const safe = Date.now() + '-' + f.name.replace(/[^a-zA-Z0-9._-]/g, '_');
       const path = 'files/' + safe;
       await gh(base() + path, {
         method: 'PUT',
-        body: JSON.stringify({
-          message: 'add ' + safe,
-          content: await toB64(f),
-          branch: CFG.branch
-        })
+        body: JSON.stringify({ message: 'add ' + safe, content: await toB64(f), branch: CFG.branch })
       });
       newItems.push({
         id: safe, topic,
@@ -267,11 +319,11 @@ async function upload() {
     r.data.items.push(...newItems);
     await saveData(r.data, r.sha);
     data = r.data;
-    $('status').textContent = '✅ আপলোড সম্পন্ন! ছবি/PDF সাইটে খুলতে ১-২ মিনিট লাগতে পারে।';
+    $('status').textContent = '✅ আপলোড সম্পন্ন! ছবি/PDF সবার জন্য খুলতে ১-২ মিনিট লাগতে পারে।';
     $('files').value = ''; $('title').value = '';
     render();
   } catch (e) {
-    $('status').style.color = '#dc2626';
+    $('status').className = 'msg err';
     $('status').textContent = 'ত্রুটি: ' + e.message;
   }
   $('upBtn').disabled = false;
